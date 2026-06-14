@@ -2907,7 +2907,7 @@ function so(q,lim){
     if(ln===q)s=0;else if(ln.startsWith(q))s=10;else if(ln.includes(q))s=20;else if(fn.startsWith(q))s=30;else if(cnl.startsWith(q))s=25;else if(cnl.includes(q))s=35;else s=50;
     sc.push({i:i,s:s});}
   sc.sort(function(a,b){return a.s-b.s||SL[a.i][1].localeCompare(SL[b.i][1]);});
-  return sc.slice(0,lim||10).map(function(x){var p=SL[x.i];var cn=CN[p[0]]||"";return{playerId:p[0],fullName:cn?cn+" ("+p[1]+")":p[1],headshotUrl:"/api/headshot?pid="+p[0],teamAbbrev:p[2],teamId:0,firstName:p[1].split(" ")[0].toLowerCase(),lastName:(p[1].split(" ").slice(1).join(" ")||p[1]).toLowerCase()};});
+  return sc.slice(0,lim||10).map(function(x){var p=SL[x.i];var cn=CN[p[0]]||"";return{playerId:p[0],fullName:cn?cn+" ("+p[1]+")":p[1],headshotUrl:"https://cdn.nba.com/headshots/nba/latest/260x190/"+p[0]+".png",teamAbbrev:p[2],teamId:0,firstName:p[1].split(" ")[0].toLowerCase(),lastName:(p[1].split(" ").slice(1).join(" ")||p[1]).toLowerCase()};});
 }
 function cc(p,cat,rc,cc2){
   if(!cat||!p)return false;
@@ -2927,7 +2927,7 @@ function vo(pid,rc,cc2){
   if(!p)return{valid:false,player:null};
   if(!cc(p,rc,rc,cc2)||!cc(p,cc2,rc,cc2))return{valid:false,player:null};
   var rk=rc.teamId+'_'+cc2.teamId,pairRarity=RR[rk]!==undefined?RR[rk]:50;
-  return{valid:true,pairRarity:pairRarity,player:{playerId:pid,fullName:p[1],headshotUrl:"/api/headshot?pid="+pid,teamIds:p[3],teamAbbrevs:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?tx.abbrev:"";}).filter(Boolean),teamLogos:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?TL[tx.abbrev]||"https://cdn.nba.com/logos/nba/"+t+"/global/L/logo.svg":"";})}};
+  return{valid:true,pairRarity:pairRarity,player:{playerId:pid,fullName:p[1],headshotUrl:"https://cdn.nba.com/headshots/nba/latest/260x190/"+pid+".png",teamIds:p[3],teamAbbrevs:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?tx.abbrev:"";}).filter(Boolean),teamLogos:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?TL[tx.abbrev]||"https://cdn.nba.com/logos/nba/"+t+"/global/L/logo.svg":"";})}};
 }
 API.getTodayGrid=function(){return Promise.resolve(genG(new Date().toISOString().split("T")[0]));};
 API.getRandomGrid=function(){return Promise.resolve(genG(null));};
