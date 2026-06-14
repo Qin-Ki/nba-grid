@@ -2412,7 +2412,7 @@ function generatePoster(callback) {
   // 去重
   teamAbbrevs = teamAbbrevs.filter(function(v, i, a) { return a.indexOf(v) === i; });
 
-  // ─── 收集球员头像（直接加载，无 CORS）───
+  // ─── 收集球员头像（通过代理加载，同源无 CORS 问题）───
   var headshotTasks = [];
   var headshotImages = {};
   for (var r = 0; r < 3; r++) {
@@ -2436,7 +2436,6 @@ function generatePoster(callback) {
   var loadTasks = teamAbbrevs.map(function(abbrev) {
     return new Promise(function(resolve) {
       var img = new Image();
-      img.crossOrigin = 'anonymous';
       img.onload = function() { logoImages[abbrev] = img; resolve(); };
       img.onerror = function() { resolve(); };
       img.src = TL[abbrev];
@@ -2488,36 +2487,60 @@ function generatePoster(callback) {
       ctx.drawImage(img, cx - iw*scale/2, cy - ih*scale/2, iw*scale, ih*scale);
       ctx.restore();
     }
+    // ─── 先画背景和不含图片的格子（主 Canvas + 导出 Canvas 共享）───
     // Corner
     drawCellBg(gx, gy, cellW, cellH, 'rgba(255,255,255,0.1)');
-    // Column headers (team logos from hupu CDN)
+    // Column headers (先文字，不画 logo)
     for (var c = 0; c < 3; c++) {
       var cx = gx + (c+1)*cellW, cy = gy;
       drawCellBg(cx, cy, cellW, cellH, 'rgba(255,255,255,0.1)');
-      var col = cols[c];
-      var logo = (col && col.teamAbbrev) ? logoImages[col.teamAbbrev] : null;
-      if (logo) {
-        drawCircularImg(ctx, logo, cx + cellW/2, cy + cellH/2, cellW * 0.3);
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = 'bold 11px -apple-system,sans-serif';
-        ctx.fillText(col ? (col.shortLabel || col.label) : '', cx+cellW/2, cy+cellH/2);
-      }
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 11px -apple-system,sans-serif';
+      ctx.fillText(cols[c] ? (cols[c].shortLabel || cols[c].label) : '', cx+cellW/2, cy+cellH/2);
     }
-    // Row labels (team logos from hupu CDN)
+    // Row labels (先文字，不画 logo)
     for (var r = 0; r < 3; r++) {
       var rx = gx, ry = gy + (r+1)*cellH;
       drawCellBg(rx, ry, cellW, cellH, 'rgba(255,255,255,0.1)');
-      var row = rows[r];
-      var logo = (row && row.teamAbbrev) ? logoImages[row.teamAbbrev] : null;
-      if (logo) {
-        drawCircularImg(ctx, logo, rx + cellW/2, ry + cellH/2, cellW * 0.3);
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = 'bold 11px -apple-system,sans-serif';
-        ctx.fillText(row ? (row.shortLabel || row.label) : '', rx+cellW/2, ry+cellH/2);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 11px -apple-system,sans-serif';
+      ctx.fillText(rows[r] ? (rows[r].shortLabel || rows[r].label) : '', rx+cellW/2, ry+cellH/2);
+    }
+    // 格子背景 + 边框
+    for (var r = 0; r < 3; r++) {
+      for (var c = 0; c < 3; c++) {
+        var cx2 = gx + (c+1)*cellW, cy2 = gy + (r+1)*cellH;
+        drawCellBg(cx2, cy2, cellW, cellH);
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+        ctx.strokeRect(cx2, cy2, cellW, cellH);
       }
     }
+    // Footer
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.textAlign = 'center';
+    ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText('Immaculate Grid', POSTER_W/2, POSTER_H-16);
+
+    // ─── 复制干净底版到离屏 Canvas ───
+    var exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    var exportCtx = exportCanvas.getContext('2d');
+    exportCtx.drawImage(canvas, 0, 0);
+    exportCtx.scale(POSTER_SCALE, POSTER_SCALE);
+    // 离屏 Canvas 也画上 header/label 文字
+    for (var c = 0; c < 3; c++) {
+      var cx = gx + (c+1)*cellW, cy = gy;
+      exportCtx.fillStyle = 'rgba(255,255,255,0.6)'; exportCtx.textAlign = 'center'; exportCtx.textBaseline = 'middle';
+      exportCtx.font = 'bold 11px -apple-system,sans-serif';
+      exportCtx.fillText(cols[c] ? (cols[c].shortLabel || cols[c].label) : '', cx+cellW/2, cy+cellH/2);
+    }
+    for (var r = 0; r < 3; r++) {
+      var rx = gx, ry = gy + (r+1)*cellH;
+      exportCtx.fillStyle = 'rgba(255,255,255,0.6)'; exportCtx.textAlign = 'center'; exportCtx.textBaseline = 'middle';
+      exportCtx.font = 'bold 11px -apple-system,sans-serif';
+      exportCtx.fillText(rows[r] ? (rows[r].shortLabel || rows[r].label) : '', rx+cellW/2, ry+cellH/2);
+    }
+
     // ─── 格子内容绘制函数 ───
     function drawCellContent() {
       for (var r = 0; r < 3; r++) {
@@ -2526,13 +2549,9 @@ function generatePoster(callback) {
           var cell = cells && cells[r] ? cells[r][c] : null;
           if (cell && cell.status === 'filled' && cell.player) {
             var cn = (typeof CN !== 'undefined' && CN[cell.player.playerId]) || cell.player.fullName || '';
-            // 绘制头像（圆形裁剪）
             var hsKey = r + '_' + c;
             var hsImg = headshotImages[hsKey];
-            if (hsImg) {
-              drawCircularImg(ctx, hsImg, cx2 + cellW/2, cy2 + cellH/2, cellW * 0.38);
-            }
-            // Name overlay
+            if (hsImg) drawCircularImg(ctx, hsImg, cx2 + cellW/2, cy2 + cellH/2, cellW * 0.38);
             ctx.fillStyle = 'rgba(0,0,0,0.55)';
             ctx.fillRect(cx2, cy2+cellH-24, cellW, 24);
             ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2549,33 +2568,25 @@ function generatePoster(callback) {
       }
     }
 
-    // 格子背景 + 边框
-    for (var r = 0; r < 3; r++) {
-      for (var c = 0; c < 3; c++) {
-        var cx2 = gx + (c+1)*cellW, cy2 = gy + (r+1)*cellH;
-        drawCellBg(cx2, cy2, cellW, cellH);
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
-        ctx.strokeRect(cx2, cy2, cellW, cellH);
-      }
+    // ─── 在主 Canvas 上画 logo 和头像（仅屏幕显示）───
+    // Column headers (画 logo)
+    for (var c = 0; c < 3; c++) {
+      var cx = gx + (c+1)*cellW, cy = gy;
+      var col = cols[c];
+      var logo = (col && col.teamAbbrev) ? logoImages[col.teamAbbrev] : null;
+      if (logo) drawCircularImg(ctx, logo, cx + cellW/2, cy + cellH/2, cellW * 0.3);
     }
-    // Footer
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.textAlign = 'center';
-    ctx.font = '10px -apple-system,sans-serif';
-    ctx.fillText('Immaculate Grid', POSTER_W/2, POSTER_H-16);
-
-    // ─── 画头像之前，先把干净背景复制到离屏 Canvas ───
-    var exportCanvas = document.createElement('canvas');
-    exportCanvas.width = canvas.width;
-    exportCanvas.height = canvas.height;
-    var exportCtx = exportCanvas.getContext('2d');
-    exportCtx.drawImage(canvas, 0, 0);
-    exportCtx.scale(POSTER_SCALE, POSTER_SCALE);
-
-    // 在主 Canvas 上画格子内容（带头像）
+    // Row labels (画 logo)
+    for (var r = 0; r < 3; r++) {
+      var rx = gx, ry = gy + (r+1)*cellH;
+      var row = rows[r];
+      var logo = (row && row.teamAbbrev) ? logoImages[row.teamAbbrev] : null;
+      if (logo) drawCircularImg(ctx, logo, rx + cellW/2, ry + cellH/2, cellW * 0.3);
+    }
+    // 格子内容（头像 + 名称）
     drawCellContent();
-    console.log('[Debug] headshotImages keys:', Object.keys(headshotImages));
 
-    // 在离屏 Canvas 上画格子内容（仅名称，无头像 — 干净导出版本）
+    // ─── 在离屏 Canvas 上画格子内容（仅名称，无头像无 logo）───
     for (var r = 0; r < 3; r++) {
       for (var c = 0; c < 3; c++) {
         var cx2 = gx + (c+1)*cellW, cy2 = gy + (r+1)*cellH;
@@ -2598,7 +2609,7 @@ function generatePoster(callback) {
       }
     }
 
-    // 从离屏 Canvas 导出（绝对干净，无跨域图片）
+    // ─── 从离屏 Canvas 导出 ───
     try {
       var cleanDataURL = exportCanvas.toDataURL('image/png');
       document.getElementById('posterPreviewImg').src = cleanDataURL;
@@ -2896,7 +2907,7 @@ function so(q,lim){
     if(ln===q)s=0;else if(ln.startsWith(q))s=10;else if(ln.includes(q))s=20;else if(fn.startsWith(q))s=30;else if(cnl.startsWith(q))s=25;else if(cnl.includes(q))s=35;else s=50;
     sc.push({i:i,s:s});}
   sc.sort(function(a,b){return a.s-b.s||SL[a.i][1].localeCompare(SL[b.i][1]);});
-  return sc.slice(0,lim||10).map(function(x){var p=SL[x.i];var cn=CN[p[0]]||"";return{playerId:p[0],fullName:cn?cn+" ("+p[1]+")":p[1],headshotUrl:"https://cdn.nba.com/headshots/nba/latest/260x190/"+p[0]+".png",teamAbbrev:p[2],teamId:0,firstName:p[1].split(" ")[0].toLowerCase(),lastName:(p[1].split(" ").slice(1).join(" ")||p[1]).toLowerCase()};});
+  return sc.slice(0,lim||10).map(function(x){var p=SL[x.i];var cn=CN[p[0]]||"";return{playerId:p[0],fullName:cn?cn+" ("+p[1]+")":p[1],headshotUrl:"/api/headshot?pid="+p[0],teamAbbrev:p[2],teamId:0,firstName:p[1].split(" ")[0].toLowerCase(),lastName:(p[1].split(" ").slice(1).join(" ")||p[1]).toLowerCase()};});
 }
 function cc(p,cat,rc,cc2){
   if(!cat||!p)return false;
@@ -2916,7 +2927,7 @@ function vo(pid,rc,cc2){
   if(!p)return{valid:false,player:null};
   if(!cc(p,rc,rc,cc2)||!cc(p,cc2,rc,cc2))return{valid:false,player:null};
   var rk=rc.teamId+'_'+cc2.teamId,pairRarity=RR[rk]!==undefined?RR[rk]:50;
-  return{valid:true,pairRarity:pairRarity,player:{playerId:pid,fullName:p[1],headshotUrl:"https://cdn.nba.com/headshots/nba/latest/260x190/"+pid+".png",teamIds:p[3],teamAbbrevs:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?tx.abbrev:"";}).filter(Boolean),teamLogos:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?TL[tx.abbrev]||"https://cdn.nba.com/logos/nba/"+t+"/global/L/logo.svg":"";})}};
+  return{valid:true,pairRarity:pairRarity,player:{playerId:pid,fullName:p[1],headshotUrl:"/api/headshot?pid="+pid,teamIds:p[3],teamAbbrevs:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?tx.abbrev:"";}).filter(Boolean),teamLogos:p[3].map(function(t){var tx=TD.find(function(tm){return tm.teamId===t;});return tx?TL[tx.abbrev]||"https://cdn.nba.com/logos/nba/"+t+"/global/L/logo.svg":"";})}};
 }
 API.getTodayGrid=function(){return Promise.resolve(genG(new Date().toISOString().split("T")[0]));};
 API.getRandomGrid=function(){return Promise.resolve(genG(null));};
